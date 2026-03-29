@@ -2,6 +2,7 @@ import pygame
 import sys
 from settings import *
 from ui import Button, draw_text
+from game_objects import Paddle, Ball, create_blocks
 
 pygame.init()
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SCALED | pygame.RESIZABLE)
@@ -10,15 +11,24 @@ clock = pygame.time.Clock()
 
 state = "MENU"
 current_theme = "DARK"
+lives = 3
+score = 0
+level = 1
 
 btn_play = Button("START GAME", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2, 200, 50)
 btn_settings = Button("SETTINGS", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 70, 200, 50)
 btn_theme = Button("CHANGE APPEARANCE", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2, 250, 50)
 btn_back = Button("BACK", SCREEN_WIDTH // 2, SCREEN_HEIGHT - 100, 150, 50)
+btn_pause = Button("PAUSE", SCREEN_WIDTH - 70, 20, 100, 30)
+btn_resume = Button("RESUME", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2, 200, 50)
+btn_menu = Button("MAIN MENU", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 70, 200, 50)
 
+paddle = Paddle()
+ball = Ball()
+blocks = create_blocks(7, 10)
 
 def main():
-    global state, current_theme
+    global state, current_theme, blocks, lives, score, level
     running = True
 
     while running:
@@ -28,12 +38,6 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
 
-            if state == "MENU":
-                if btn_play.is_clicked(event):
-                    state = "GAME"
-                if btn_settings.is_clicked(event):
-                    state = "SETTINGS"
-
             elif state == "SETTINGS":
                 if btn_theme.is_clicked(event):
                     current_theme = "LIGHT" if current_theme == "DARK" else "DARK"
@@ -41,13 +45,48 @@ def main():
                     state = "MENU"
 
             elif state == "GAME":
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                if btn_pause.is_clicked(event):
+                    state = "PAUSE"
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE or event.key == pygame.K_p:
+                        state = "PAUSE"
+
+            elif state == "PAUSE":
+                if btn_resume.is_clicked(event):
+                    state = "GAME"
+                if btn_menu.is_clicked(event):
                     state = "MENU"
+
+            if state == "MENU" or state == "GAMEOVER" or state == "VICTORY":
+                if btn_play.is_clicked(event):
+                    state = "GAME"
+                    lives = 3
+                    score = 0
+                    level = 1
+                    blocks = create_blocks(5, 3)
+                    paddle.__init__()
+                    ball.__init__()
+                if btn_settings.is_clicked(event):
+                    state = "SETTINGS"
 
         screen.fill(colors["background"])
 
         if state == "MENU":
             draw_text(screen, "BLOCK BREAKER", 60, colors["text_accent"], SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3 - 50)
+            btn_play.draw(screen, colors)
+            btn_settings.draw(screen, colors)
+
+        elif state == "GAMEOVER":
+            draw_text(screen, "GAME OVER", 70, (220, 50, 50), SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3 - 50)
+            draw_text(screen, f"Final Score: {score}", 30, colors["text_primary"], SCREEN_WIDTH // 2,
+                      SCREEN_HEIGHT // 3 + 20)
+            btn_play.draw(screen, colors)
+            btn_settings.draw(screen, colors)
+
+        elif state == "VICTORY":
+            draw_text(screen, "YOU WIN!", 70, (50, 220, 50), SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3 - 50)
+            draw_text(screen, f"Final Score: {score}", 30, colors["text_primary"], SCREEN_WIDTH // 2,
+                      SCREEN_HEIGHT // 3 + 20)
             btn_play.draw(screen, colors)
             btn_settings.draw(screen, colors)
 
@@ -59,17 +98,66 @@ def main():
             btn_back.draw(screen, colors)
 
         elif state == "GAME":
-            draw_text(screen, "Game...", 40, colors["text_primary"], SCREEN_WIDTH // 2,
-                      SCREEN_HEIGHT // 3)
-            draw_text(screen, "(Press ESC for the Menu)", 20, colors["text_primary"], SCREEN_WIDTH // 2,
-                      SCREEN_HEIGHT // 2 + 50)
+            paddle.move()
+            ball.move(paddle)
+
+            if ball.rect.colliderect(paddle.rect) and ball.dy > 0:
+                ball.dy *= -1
+
+            for block in blocks[:]:
+                if ball.rect.colliderect(block.rect):
+                    blocks.remove(block)
+                    ball.dy *= -1
+                    score += 10
+                    break
+
+            if len(blocks) == 0:
+                level += 1
+                blocks = create_blocks(7, 10)
+                paddle.__init__()
+                ball.__init__()
+
+                speed_increase = level - 1
+                ball.dx = 5 + speed_increase
+                ball.dy = -(5 + speed_increase)
+
+            if ball.rect.bottom >= SCREEN_HEIGHT:
+                lives -= 1
+
+                if lives > 0:
+                    paddle.__init__()
+                    ball.__init__()
+                else:
+                    state = "GAMEOVER"
+
+            for block in blocks:
+                block.draw(screen)
+
+            paddle.draw(screen, colors["text_accent"])
+            ball.draw(screen, colors["text_primary"])
+            draw_text(screen, f"LIVES: {lives}", 20, colors["text_primary"], 60, 20)
+            draw_text(screen, f"SCORE: {score}", 20, colors["text_primary"], SCREEN_WIDTH // 2 - 50, 20)
+            draw_text(screen, f"LEVEL: {level}", 20, colors["text_accent"], SCREEN_WIDTH // 2 + 80, 20)
+            #draw_text(screen, "Press ESC for MENU", 16, colors["text_primary"], SCREEN_WIDTH - 100, 20)
+            btn_pause.draw(screen, colors)
+
+        elif state == "PAUSE":
+            for block in blocks:
+                block.draw(screen)
+            paddle.draw(screen, colors["text_accent"])
+            ball.draw(screen, colors["text_primary"])
+            draw_text(screen, f"LIVES: {lives}", 20, colors["text_primary"], 60, 20)
+            draw_text(screen, f"SCORE: {score}", 20, colors["text_primary"], SCREEN_WIDTH // 2, 20)
+
+            draw_text(screen, "PAUSED", 60, colors["text_accent"], SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3 - 30)
+            btn_resume.draw(screen, colors)
+            btn_menu.draw(screen, colors)
 
         pygame.display.flip()
         clock.tick(FPS)
 
     pygame.quit()
     sys.exit()
-
 
 if __name__ == "__main__":
     main()
