@@ -3,6 +3,7 @@ import sys
 from settings import *
 from ui import Button, draw_text
 from game_objects import Paddle, Ball, create_blocks
+from sound_manager import sounds
 
 pygame.init()
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SCALED | pygame.RESIZABLE)
@@ -22,6 +23,7 @@ btn_back = Button("BACK", SCREEN_WIDTH // 2, SCREEN_HEIGHT - 100, 150, 50)
 btn_pause = Button("PAUSE", SCREEN_WIDTH - 70, 20, 100, 30)
 btn_resume = Button("RESUME", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2, 200, 50)
 btn_menu = Button("MAIN MENU", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 70, 200, 50)
+btn_mute = Button("SOUND: ON", SCREEN_WIDTH - 200, 20, 130, 30)
 
 paddle = Paddle()
 ball = Ball()
@@ -37,6 +39,10 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+
+            if btn_mute.is_clicked(event):
+                sounds.toggle_mute()
+                btn_mute.text = "SOUND: OFF" if sounds.muted else "SOUND: ON"
 
             elif state == "SETTINGS":
                 if btn_theme.is_clicked(event):
@@ -99,19 +105,25 @@ def main():
 
         elif state == "GAME":
             paddle.move()
+            was_active = ball.active
             ball.move(paddle)
+            if not was_active and ball.active:
+                sounds.play_start()
 
             if ball.rect.colliderect(paddle.rect) and ball.dy > 0:
                 ball.dy *= -1
+                sounds.play_hit_paddle()
 
             for block in blocks[:]:
                 if ball.rect.colliderect(block.rect):
                     blocks.remove(block)
                     ball.dy *= -1
                     score += 10
+                    sounds.play_hit_block()
                     break
 
             if len(blocks) == 0:
+                sounds.play_level_up()
                 level += 1
                 blocks = create_blocks(7, 10)
                 paddle.__init__()
@@ -125,9 +137,11 @@ def main():
                 lives -= 1
 
                 if lives > 0:
+                    sounds.play_lose_life()
                     paddle.__init__()
                     ball.__init__()
                 else:
+                    sounds.play_game_over()
                     state = "GAMEOVER"
 
             for block in blocks:
@@ -135,6 +149,7 @@ def main():
 
             paddle.draw(screen, colors["text_accent"])
             ball.draw(screen, colors["text_primary"])
+            btn_mute.draw(screen, colors)
             draw_text(screen, f"LIVES: {lives}", 20, colors["text_primary"], 60, 20)
             draw_text(screen, f"SCORE: {score}", 20, colors["text_primary"], SCREEN_WIDTH // 2 - 50, 20)
             draw_text(screen, f"LEVEL: {level}", 20, colors["text_accent"], SCREEN_WIDTH // 2 + 80, 20)
