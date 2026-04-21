@@ -1,98 +1,116 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import React, { useRef, useState } from 'react';
+import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { io, Socket } from 'socket.io-client';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+export default function App() {
+  const [ipAddress, setIpAddress] = useState<string>('192.168.1.103');
+  const [isConnected, setIsConnected] = useState<boolean>(false);
+  
+  const socket = useRef<Socket | null>(null);
 
-export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
+  const connectToServer = () => {
+    if (!ipAddress) return;
+
+    if (socket.current) {
+      socket.current.disconnect();
+    }
+    
+    socket.current = io(`http://${ipAddress}:8765`);
+
+    socket.current.on('connect', () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setIsConnected(true);
+    });
+
+    socket.current.on('connect_error', () => {
+      Alert.alert('Eroare', 'Nu m-am putut conecta. Verifică IP-ul și serverul de pe PC.');
+      if (socket.current) socket.current.disconnect();
+    });
+
+    socket.current.on('disconnect', () => {
+      setIsConnected(false);
+    });
+  };
+
+  const sendCommand = (direction: 'left' | 'right' | 'none') => {
+    if (socket.current && isConnected) {
+      if (direction !== 'none') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+      socket.current.emit('command', direction);
+    }
+  };
+
+  const sendAction = () => {
+    if (socket.current && isConnected) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      socket.current.emit('action', true);
+      
+      setTimeout(() => {
+        if (socket.current) socket.current.emit('action', false);
+      }, 100);
+    }
+  };
+
+  if (!isConnected) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>BlockBreaker Controller</Text>
+        <Text style={styles.subtitle}>Introdu IP-ul PC-ului tău:</Text>
+        <TextInput 
+          style={styles.input}
+          value={ipAddress}
+          onChangeText={setIpAddress}
+          keyboardType="numeric"
         />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+        <TouchableOpacity style={styles.connectButton} onPress={connectToServer}>
+          <Text style={styles.buttonText}>CONECTARE</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  return (
+    <View style={styles.gameContainer}>
+      <Text style={styles.statusText}>🟢 Conectat la joc</Text>
+      
+      <TouchableOpacity style={styles.actionButton} onPress={sendAction}>
+        <Text style={styles.buttonText}>LANSĂ MINGEA (↑)</Text>
+      </TouchableOpacity>
+
+      <View style={styles.controlsRow}>
+        <TouchableOpacity 
+          style={styles.directionButton}
+          onPressIn={() => sendCommand('left')}
+          onPressOut={() => sendCommand('none')}
+        >
+          <Text style={styles.arrowText}>←</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.directionButton}
+          onPressIn={() => sendCommand('right')}
+          onPressOut={() => sendCommand('none')}
+        >
+          <Text style={styles.arrowText}>→</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
+  container: { flex: 1, backgroundColor: '#1e1e1e', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  gameContainer: { flex: 1, backgroundColor: '#121212', alignItems: 'center', justifyContent: 'center' },
+  title: { fontSize: 28, color: '#fff', fontWeight: 'bold', marginBottom: 20 },
+  subtitle: { fontSize: 16, color: '#aaa', marginBottom: 10 },
+  input: { width: '80%', height: 50, backgroundColor: '#333', color: '#fff', fontSize: 20, textAlign: 'center', borderRadius: 10, marginBottom: 20 },
+  connectButton: { backgroundColor: '#4CAF50', paddingVertical: 15, paddingHorizontal: 40, borderRadius: 10 },
+  buttonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  statusText: { color: '#4CAF50', fontSize: 16, position: 'absolute', top: 50 },
+  actionButton: { backgroundColor: '#FF9800', width: '80%', paddingVertical: 20, borderRadius: 15, alignItems: 'center', marginBottom: 40 },
+  controlsRow: { flexDirection: 'row', width: '90%', justifyContent: 'space-between' },
+  directionButton: { backgroundColor: '#2196F3', width: '45%', height: 120, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  arrowText: { fontSize: 50, color: '#fff', fontWeight: 'bold' }
 });
