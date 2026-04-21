@@ -1,5 +1,6 @@
 import pygame
 import sys
+import server
 from settings import *
 from ui import Button, draw_text
 from game_objects import Paddle, Ball, create_blocks
@@ -35,6 +36,7 @@ blocks = create_blocks(7, 10)
 
 def main():
     global state, current_theme, blocks, lives, score, level
+    server.start_server_thread()
     running = True
 
     while running:
