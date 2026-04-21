@@ -9,11 +9,11 @@ class Paddle:
         self.rect = pygame.Rect(SCREEN_WIDTH // 2 - self.width // 2, SCREEN_HEIGHT - 40, self.width, self.height)
         self.speed = 8
 
-    def move(self):
+    def move(self, remote_command=None):
         keys = pygame.key.get_pressed()
-        if keys[pygame.K_LEFT] and self.rect.left > 0:
+        if (keys[pygame.K_LEFT] or remote_command == 'left') and self.rect.left > 0:
             self.rect.x -= self.speed
-        if keys[pygame.K_RIGHT] and self.rect.right < SCREEN_WIDTH:
+        if (keys[pygame.K_RIGHT] or remote_command == 'right') and self.rect.right < SCREEN_WIDTH:
             self.rect.x += self.speed
 
     def draw(self, surface, color):
@@ -28,13 +28,13 @@ class Ball:
         self.dy = -5
         self.active = False
 
-    def move(self, paddle):
+    def move(self, paddle, remote_launch=False):
         if not self.active:
             self.rect.centerx = paddle.rect.centerx
             self.rect.bottom = paddle.rect.top
 
             keys = pygame.key.get_pressed()
-            if keys[pygame.K_UP]:
+            if keys[pygame.K_UP] or remote_launch:
                 self.active = True
         else:
             self.rect.x += self.dx

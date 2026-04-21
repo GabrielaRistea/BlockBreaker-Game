@@ -1,30 +1,37 @@
 import * as Haptics from 'expo-haptics';
 import { useRef, useState } from 'react';
-import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { io, Socket } from 'socket.io-client';
 
 export default function App() {
   const [ipAddress, setIpAddress] = useState<string>('192.168.1.104');
   const [isConnected, setIsConnected] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   
   const socket = useRef<Socket | null>(null);
 
   const connectToServer = () => {
-    if (!ipAddress) return;
+    if (!ipAddress || isLoading) return;
+
+    setIsLoading(true);
 
     if (socket.current) {
       socket.current.disconnect();
     }
     
-    socket.current = io(`http://${ipAddress}:8765`);
+    socket.current = io(`http://${ipAddress}:8765`, {
+      timeout: 5000,
+    });
 
     socket.current.on('connect', () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setIsConnected(true);
+      setIsLoading(false);
     });
 
     socket.current.on('connect_error', () => {
-      Alert.alert('Eroare', 'Nu m-am putut conecta. Verifică IP-ul și serverul de pe PC.');
+      setIsLoading(false);
+      Alert.alert('Error', 'Could not connect. Check the IP and the server on your PC.');
       if (socket.current) socket.current.disconnect();
     });
 
@@ -57,15 +64,26 @@ export default function App() {
     return (
       <View style={styles.container}>
         <Text style={styles.title}>BlockBreaker Controller</Text>
-        <Text style={styles.subtitle}>Introdu IP-ul PC-ului tău:</Text>
+        <Text style={styles.subtitle}>Enter your PC's IP address:</Text>
         <TextInput 
           style={styles.input}
           value={ipAddress}
           onChangeText={setIpAddress}
           keyboardType="numeric"
         />
-        <TouchableOpacity style={styles.connectButton} onPress={connectToServer}>
-          <Text style={styles.buttonText}>CONECTARE</Text>
+        <TouchableOpacity 
+          style={[styles.connectButton, isLoading && { backgroundColor: '#888' }]} 
+          onPress={connectToServer}
+          disabled={isLoading} 
+        >
+          {isLoading ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <ActivityIndicator color="#fff" style={{ marginRight: 10 }} />
+              <Text style={styles.buttonText}>WAITING...</Text>
+            </View>
+          ) : (
+            <Text style={styles.buttonText}>CONNECT</Text>
+          )}
         </TouchableOpacity>
       </View>
     );
@@ -73,10 +91,10 @@ export default function App() {
 
   return (
     <View style={styles.gameContainer}>
-      <Text style={styles.statusText}>🟢 Conectat la joc</Text>
+      <Text style={styles.statusText}>🟢 Connected</Text>
       
       <TouchableOpacity style={styles.actionButton} onPress={sendAction}>
-        <Text style={styles.buttonText}>LANSĂ MINGEA (↑)</Text>
+        <Text style={styles.buttonText}>THROW BALL (↑)</Text>
       </TouchableOpacity>
 
       <View style={styles.controlsRow}>

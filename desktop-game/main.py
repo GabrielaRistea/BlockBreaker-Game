@@ -149,11 +149,12 @@ def main():
             draw_text(screen, "PRESS ENTER TO SAVE", 15, colors["text_primary"], SCREEN_WIDTH // 2, SCREEN_HEIGHT - 50)
 
         elif state == "GAME":
-            paddle.move()
+            paddle.move(server.remote_command)
             was_active = ball.active
-            ball.move(paddle)
+            ball.move(paddle, server.remote_action)
             if not was_active and ball.active:
                 sounds.play_start()
+                server.remote_action = False
 
             if ball.rect.colliderect(paddle.rect) and ball.dy > 0:
                 ball.dy *= -1
