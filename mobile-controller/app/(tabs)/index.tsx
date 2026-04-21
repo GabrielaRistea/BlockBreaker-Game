@@ -1,10 +1,10 @@
 import * as Haptics from 'expo-haptics';
-import React, { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { io, Socket } from 'socket.io-client';
 
 export default function App() {
-  const [ipAddress, setIpAddress] = useState<string>('192.168.1.103');
+  const [ipAddress, setIpAddress] = useState<string>('192.168.1.104');
   const [isConnected, setIsConnected] = useState<boolean>(false);
   
   const socket = useRef<Socket | null>(null);
