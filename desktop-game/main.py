@@ -42,6 +42,31 @@ def main():
     while running:
         colors = THEMES[current_theme]
 
+        if server.add_life_requested:
+            server.add_life_requested = False
+            lives += 1
+
+            if state in ["GAMEOVER", "INPUT_NAME", "VICTORY"]:
+                state = "GAME"
+                paddle.__init__()
+                ball.__init__()
+                if len(blocks) == 0:
+                    blocks = create_blocks(7, 10)
+
+            server.send_update(score, lives, state)
+
+        if getattr(server, 'start_game_requested', False):
+            server.start_game_requested = False
+            if state in ["MENU", "GAMEOVER", "VICTORY", "INPUT_NAME", "SETTINGS"]:
+                state = "GAME"
+                lives = 3
+                score = 0
+                level = 1
+                blocks = create_blocks(5, 3)
+                paddle.__init__()
+                ball.__init__()
+                server.send_update(score, lives, state)
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -94,6 +119,7 @@ def main():
                     blocks = create_blocks(5, 3)
                     paddle.__init__()
                     ball.__init__()
+                    server.send_update(score, lives, state)
                 if btn_settings.is_clicked(event):
                     state = "SETTINGS"
                 if btn_leaderboard.is_clicked(event):
@@ -152,6 +178,7 @@ def main():
             paddle.move(server.remote_command)
             was_active = ball.active
             ball.move(paddle, server.remote_action)
+
             if not was_active and ball.active:
                 sounds.play_start()
                 server.remote_action = False
@@ -159,17 +186,22 @@ def main():
             if ball.rect.colliderect(paddle.rect) and ball.dy > 0:
                 ball.dy *= -1
                 sounds.play_hit_paddle()
+                server.send_vibration('light')
 
             for block in blocks[:]:
                 if ball.rect.colliderect(block.rect):
                     blocks.remove(block)
-                    ball.dy *= -1
+                    #ball.dy *= -1
                     score += 10
+                    ball.dy *= -1
                     sounds.play_hit_block()
+                    server.send_vibration('medium')
+                    server.send_update(score, lives, state)
                     break
 
             if len(blocks) == 0:
                 sounds.play_level_up()
+                server.send_vibration('success')
                 level += 1
                 blocks = create_blocks(7, 10)
                 paddle.__init__()
@@ -181,15 +213,19 @@ def main():
 
             if ball.rect.bottom >= SCREEN_HEIGHT:
                 lives -= 1
-
+                #server.send_update(score, lives, state)
                 if lives > 0:
+                    server.send_update(score, lives, state)
                     sounds.play_lose_life()
+                    server.send_vibration('heavy')
                     paddle.__init__()
                     ball.__init__()
                 else:
-                    sounds.play_game_over()
                     state = "INPUT_NAME"
                     player_name = ""
+                    server.send_update(score, lives, state)
+                    sounds.play_game_over()
+                    server.send_vibration('heavy')
                     #add_score(player_name, score)
                     #state = "GAMEOVER"
 
@@ -216,6 +252,12 @@ def main():
             draw_text(screen, "PAUSED", 60, colors["text_accent"], SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3 - 30)
             btn_resume.draw(screen, colors)
             btn_menu.draw(screen, colors)
+
+        status_color = (50, 220, 50) if server.phone_connected else (220, 50, 50)
+        status_text = "📱 Controller: CONNECTED" if server.phone_connected else "📱 Controller: DISCONNECTED"
+
+        pygame.draw.circle(screen, status_color, (20, SCREEN_HEIGHT - 20), 7)
+        draw_text(screen, status_text, 16, status_color, 110, SCREEN_HEIGHT - 20)
 
         pygame.display.flip()
         clock.tick(FPS)
