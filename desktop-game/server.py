@@ -1,41 +1,76 @@
-import socketio
 import eventlet
+import eventlet.wsgi
+from eventlet.websocket import WebSocketWSGI
+import json
 import threading
 
-sio = socketio.Server(cors_allowed_origins='*')
-app = socketio.WSGIApp(sio)
-
 phone_connected = False
-remote_command = None
+active_ws = None
+remote_command = "none"
 remote_action = False
+add_life_requested = False
+start_game_requested = False
 
-@sio.event
-def connect(sid, environ):
-    global phone_connected
+
+@WebSocketWSGI
+def handle_websocket(ws):
+    global phone_connected, active_ws, remote_command, remote_action, add_life_requested, start_game_requested
     phone_connected = True
-    print(f"\n📱 [SERVER] Telefon conectat cu succes! (ID: {sid})")
+    active_ws = ws
+    print("📱 [SERVER] Telefon conectat cu succes!")
 
-@sio.event
-def disconnect(sid):
-    global phone_connected, remote_command, remote_action
-    phone_connected = False
-    remote_command = None
-    remote_action = False
-    print("\n📱 [SERVER] Telefon deconectat. Trec pe tastatură.")
+    try:
+        while True:
+            message = ws.wait()
+            if message is None:
+                break
 
-@sio.event
-def command(sid, data):
-    global remote_command
-    remote_command = data
+            data = json.loads(message)
+            if data['type'] == 'command':
+                remote_command = data['value']
+            elif data['type'] == 'action':
+                remote_action = data['value']
+            elif data['type'] == 'add_life':
+                add_life_requested = True
+            elif data['type'] == 'start_game':
+                start_game_requested = True
+    except Exception as e:
+        pass
+    finally:
+        phone_connected = False
+        active_ws = None
+        remote_command = "none"
+        print("❌ [SERVER] Telefon deconectat.")
 
-@sio.event
-def action(sid, data):
-    global remote_action
-    remote_action = data
+def dispatch(environ, start_response):
+    if environ['PATH_INFO'] == '/':
+        return handle_websocket(environ, start_response)
+    else:
+        start_response('404 Not Found', [('Content-Type', 'text/plain')])
+        return [b'Not Found']
+
+def send_update(score, lives, game_state="MENU"):
+    global active_connection, loop
+    if phone_connected and active_ws:
+        try:
+            message = json.dumps({'type': 'update_data', 'score': score, 'lives': lives, 'state': game_state})
+            active_ws.send(message)
+        except Exception:
+            pass
+
+
+def send_vibration(vibrate_type):
+    if phone_connected and active_ws:
+        try:
+            active_ws.send(json.dumps({'type': 'vibrate', 'value': vibrate_type}))
+        except Exception:
+            pass
+
 
 def start_server_loop():
-    print("🚀 [SERVER] Socket.IO activ pe portul 8765. Aștept conexiuni...")
-    eventlet.wsgi.server(eventlet.listen(('0.0.0.0', 8765)), app, log_output=False)
+    print("🚀 [SERVER] Server Anti-Crash activ pe portul 8765...")
+    eventlet.wsgi.server(eventlet.listen(('0.0.0.0', 8765)), dispatch, log_output=False)
+
 
 def start_server_thread():
     thread = threading.Thread(target=start_server_loop, daemon=True)
