@@ -10,11 +10,15 @@ remote_command = "none"
 remote_action = False
 add_life_requested = False
 start_game_requested = False
-
+remote_name = None
+pause_requested = False
+mute_requested = False
+skip_requested = False
 
 @WebSocketWSGI
 def handle_websocket(ws):
-    global phone_connected, active_ws, remote_command, remote_action, add_life_requested, start_game_requested
+    global phone_connected, active_ws, remote_command, remote_action, add_life_requested, start_game_requested, \
+        remote_name, pause_requested, mute_requested, skip_requested
     phone_connected = True
     active_ws = ws
     print("📱 [SERVER] Telefon conectat cu succes!")
@@ -34,6 +38,14 @@ def handle_websocket(ws):
                 add_life_requested = True
             elif data['type'] == 'start_game':
                 start_game_requested = True
+            elif data['type'] == 'save_score':
+                remote_name = data['value']
+            elif data['type'] == 'pause':
+                pause_requested = True
+            elif data['type'] == 'toggle_mute':
+                mute_requested = True
+            elif data['type'] == 'skip_score':
+                skip_requested = True
     except Exception as e:
         pass
     finally:
@@ -49,12 +61,14 @@ def dispatch(environ, start_response):
         start_response('404 Not Found', [('Content-Type', 'text/plain')])
         return [b'Not Found']
 
-def send_update(score, lives, game_state="MENU"):
+def send_update(score, lives, game_state="MENU", is_muted=None):
     global active_connection, loop
     if phone_connected and active_ws:
         try:
-            message = json.dumps({'type': 'update_data', 'score': score, 'lives': lives, 'state': game_state})
-            active_ws.send(message)
+            message = {'type': 'update_data', 'score': score, 'lives': lives, 'state': game_state}
+            if is_muted is not None:
+                message['is_muted'] = is_muted
+            active_ws.send(json.dumps(message))
         except Exception:
             pass
 
