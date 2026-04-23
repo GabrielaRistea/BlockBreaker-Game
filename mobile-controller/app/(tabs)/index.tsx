@@ -3,13 +3,18 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 export default function App() {
-  const [ipAddress, setIpAddress] = useState<string>('10.2.13.140');
+  const [ipAddress, setIpAddress] = useState<string>('');
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   
   const [score, setScore] = useState<number>(0);
   const [lives, setLives] = useState<number>(3);
   const [gameState, setGameState] = useState<string>('MENU');
+
+  const [playerName, setPlayerName] = useState<string>('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const [isMuted, setIsMuted] = useState(false);
 
   const ws = useRef<WebSocket | null>(null);
 
@@ -52,7 +57,7 @@ export default function App() {
       if (ws.current && ws.current.readyState !== WebSocket.OPEN) {
         ws.current.close();
         setIsLoading(false);
-        Alert.alert('Eroare', 'Timpul a expirat. Verifică IP-ul!');
+        Alert.alert('Error', 'Request timed out. Please check your IP address!');
       }
     }, 4000);
 
@@ -67,9 +72,18 @@ export default function App() {
       try {
         const data = JSON.parse(event.data);
         if (data.type === 'update_data') {
+          if (data.state !== 'INPUT_NAME') {
+            setIsSaving(false);
+          }
+          if (data.state === 'GAME' && gameState !== 'GAME') {
+            setPlayerName('');
+          }
           setScore(data.score);
           setLives(data.lives);
           if (data.state) setGameState(data.state);
+          if (data.is_muted !== undefined && data.is_muted !== null) {
+            setIsMuted(data.is_muted);
+          }
         } else if (data.type === 'vibrate') {
           const type = data.value;
           try {
@@ -129,6 +143,36 @@ export default function App() {
     }
   };
 
+  const sendSaveScore = () => {
+    if (playerName.trim() && !isSaving) {
+      setIsSaving(true); 
+      try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch(e){}
+      
+      ws.current?.send(JSON.stringify({ 
+        type: 'save_score', 
+        value: playerName.trim() 
+      }));
+    }
+  };
+  const sendPause = () => {
+    if (ws.current && isConnected) {
+      try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch(e){}
+      ws.current.send(JSON.stringify({ type: 'pause' }));
+    }
+  };
+  const toggleMute = () => {
+    if (ws.current && isConnected) {
+      try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch(e){}
+      ws.current.send(JSON.stringify({ type: 'toggle_mute' }));
+    }
+  };
+  const sendSkip = () => {
+    if (ws.current && isConnected) {
+      try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch(e){}
+      ws.current.send(JSON.stringify({ type: 'skip_score' }));
+    }
+  };
+
   if (!isConnected) {
     return (
       <View style={styles.container}>
@@ -159,6 +203,18 @@ export default function App() {
     return (
       <Animated.View style={[styles.gameContainer, { transform: [{ translateX: shakeAnim }] }]}>
         {renderHeader()}
+        <TouchableOpacity 
+          style={[styles.pauseButton, gameState === 'PAUSE' && {backgroundColor: '#4CAF50'}]} 
+          onPress={sendPause}
+        >
+          <Text style={styles.buttonText}>{gameState === 'PAUSE' ? '▶️ RESUME' : '⏸ PAUSE'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.muteButton, isMuted && { backgroundColor: '#555' }]} 
+          onPress={toggleMute}
+        >
+          <Text style={styles.buttonText}>{isMuted ? '🔇 SOUND OFF' : '🔊 SOUND ON'}</Text>
+        </TouchableOpacity>
         
         <View style={styles.centerGroup}>
           <TouchableOpacity style={styles.actionButton} onPress={sendAction}>
@@ -175,6 +231,39 @@ export default function App() {
           </TouchableOpacity>
         </View>
       </Animated.View>
+    );
+  }
+  if (gameState === 'INPUT_NAME') {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>NEW HIGH SCORE!</Text>
+        <Text style={[styles.statText, {color: '#4CAF50', marginBottom: 20}]}>Score: {score}</Text>
+        
+        <TextInput 
+          style={styles.input}
+          placeholder="Enter your name"
+          placeholderTextColor="#666"
+          value={playerName}
+          onChangeText={setPlayerName}
+          maxLength={10}
+          autoFocus={true} 
+        />
+        
+        <TouchableOpacity 
+            style={[styles.saveButton, isSaving && { backgroundColor: '#888' }]} 
+            onPress={sendSaveScore}
+            disabled={isSaving}
+          >
+            {isSaving ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>SAVE SCORE</Text>
+            )}
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.skipButton} onPress={sendSkip}>
+           <Text style={styles.skipButtonText}>SKIP AND CONTINUE ➔</Text>
+        </TouchableOpacity>
+      </View>
     );
   }
 
@@ -219,5 +308,10 @@ const styles = StyleSheet.create({
   actionButton: { backgroundColor: '#FF9800', width: '80%', paddingVertical: 20, borderRadius: 15, alignItems: 'center' },
   controlsRow: { flexDirection: 'row', width: '90%', justifyContent: 'space-between', marginTop: 'auto', marginBottom: 40 },
   directionButton: { backgroundColor: '#2196F3', width: '45%', height: 120, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  arrowText: { fontSize: 50, color: '#fff', fontWeight: 'bold' }
+  arrowText: { fontSize: 50, color: '#fff', fontWeight: 'bold' },
+  saveButton: { backgroundColor: '#FF9800', paddingVertical: 15, paddingHorizontal: 40, borderRadius: 10, marginTop: 10 },
+  pauseButton: { backgroundColor: '#f44336', paddingVertical: 10, paddingHorizontal: 30, borderRadius: 10, marginTop: 20, alignSelf: 'center' },
+  muteButton: { backgroundColor: '#9C27B0', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 10, marginTop: 10, alignSelf: 'center' },
+  skipButton: { marginTop: 20, padding: 10, },
+  skipButtonText: { color: '#aaa', fontSize: 16, textDecorationLine: 'underline', },
 });

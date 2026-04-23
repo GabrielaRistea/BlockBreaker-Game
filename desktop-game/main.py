@@ -1,5 +1,6 @@
 import pygame
 import sys
+import socket
 import server
 from settings import *
 from ui import Button, draw_text
@@ -12,12 +13,23 @@ screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SCALED | 
 pygame.display.set_caption("Block Breaker")
 clock = pygame.time.Clock()
 
+def get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
 state = "MENU"
 current_theme = "DARK"
 lives = 3
 score = 0
 level = 1
 player_name = ""
+PC_IP = get_local_ip()
 
 btn_play = Button("START GAME", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2, 200, 50)
 btn_settings = Button("SETTINGS", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 70, 200, 50)
@@ -27,8 +39,10 @@ btn_pause = Button("PAUSE", SCREEN_WIDTH - 70, 20, 100, 30)
 btn_resume = Button("RESUME", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2, 200, 50)
 btn_menu = Button("MAIN MENU", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 70, 200, 50)
 btn_mute = Button("SOUND: ON", SCREEN_WIDTH - 200, 20, 130, 30)
+btn_connect_menu = Button("CONNECT CONTROLLER", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 210, 250, 50)
 btn_leaderboard = Button("LEADERBOARD", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 140, 200, 50)
 btn_back_leaderboard = Button("BACK", SCREEN_WIDTH // 2, SCREEN_HEIGHT - 50, 150, 50)
+btn_back_connect = Button("BACK", SCREEN_WIDTH // 2, SCREEN_HEIGHT - 50, 150, 50)
 
 paddle = Paddle()
 ball = Ball()
@@ -53,7 +67,7 @@ def main():
                 if len(blocks) == 0:
                     blocks = create_blocks(7, 10)
 
-            server.send_update(score, lives, state)
+            server.send_update(score, lives, state, sounds.muted)
 
         if getattr(server, 'start_game_requested', False):
             server.start_game_requested = False
@@ -62,10 +76,34 @@ def main():
                 lives = 3
                 score = 0
                 level = 1
+                player_name = ""
                 blocks = create_blocks(5, 3)
                 paddle.__init__()
                 ball.__init__()
+                server.send_update(score, lives, state, sounds.muted)
+        if getattr(server, 'pause_requested', False):
+            server.pause_requested = False
+            if state == "GAME":
+                state = "PAUSE"
+            elif state == "PAUSE":
+                state = "GAME"
+            server.send_update(score, lives, state)
+        if getattr(server, 'mute_requested', False):
+            server.mute_requested = False
+            sounds.toggle_mute()
+            btn_mute.text = "SOUND: OFF" if sounds.muted else "SOUND: ON"
+            server.send_update(score, lives, state, sounds.muted)
+        if getattr(server, 'skip_requested', False):
+            server.skip_requested = False
+            state = "GAMEOVER"
+            server.send_update(score, lives, state, sounds.muted)
+        if state == "INPUT_NAME":
+            if hasattr(server, 'remote_name') and server.remote_name:
+                player_name = server.remote_name
+                server.remote_name = None
+                state = "GAMEOVER"
                 server.send_update(score, lives, state)
+                add_score(player_name, score)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -74,9 +112,14 @@ def main():
             if btn_mute.is_clicked(event):
                 sounds.toggle_mute()
                 btn_mute.text = "SOUND: OFF" if sounds.muted else "SOUND: ON"
+                server.send_update(score, lives, state, sounds.muted)
 
             elif state == "LEADERBOARD":
                 if btn_back_leaderboard.is_clicked(event):
+                    state = "MENU"
+
+            elif state == "CONNECT_MENU":
+                if btn_back_connect.is_clicked(event):
                     state = "MENU"
 
             elif state == "INPUT_NAME":
@@ -84,7 +127,8 @@ def main():
                     if event.key == pygame.K_RETURN:
                         if player_name.strip() != "":
                             add_score(player_name, score)
-                            state = "GAMEOVER"
+                        state = "GAMEOVER"
+                        server.send_update(score, lives, state)
                     elif event.key == pygame.K_BACKSPACE:
                         player_name = player_name[:-1]
                     else:
@@ -124,14 +168,34 @@ def main():
                     state = "SETTINGS"
                 if btn_leaderboard.is_clicked(event):
                     state = "LEADERBOARD"
+                if btn_connect_menu.is_clicked(event):
+                    state = "CONNECT_MENU"
 
         screen.fill(colors["background"])
 
-        if state == "MENU":
+        if state == "CONNECT_MENU":
+            draw_text(screen, "CONTROLLER SETUP", 50, colors["text_accent"], SCREEN_WIDTH // 2, 100)
+            draw_text(screen, "Enter this IP in your phone app:", 25, colors["text_primary"], SCREEN_WIDTH // 2, 250)
+
+            draw_text(screen, PC_IP, 60, (50, 220, 50), SCREEN_WIDTH // 2, 350)
+
+            if not server.phone_connected:
+                draw_text(screen, "Waiting for connection...", 20, (150, 150, 150), SCREEN_WIDTH // 2, 450)
+
+            if server.phone_connected:
+                draw_text(screen, "CONNECTED!", 30, (50, 220, 50), SCREEN_WIDTH // 2, 500)
+                pygame.display.flip()
+                pygame.time.delay(1000)
+                state = "MENU"
+                server.send_update(score, lives, state)
+            btn_back_connect.draw(screen, colors)
+
+        elif state == "MENU":
             draw_text(screen, "BLOCK BREAKER", 60, colors["text_accent"], SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3 - 50)
             btn_play.draw(screen, colors)
             btn_settings.draw(screen, colors)
             btn_leaderboard.draw(screen, colors)
+            btn_connect_menu.draw(screen, colors)
 
         elif state == "GAMEOVER":
             draw_text(screen, "GAME OVER", 70, (220, 50, 50), SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3 - 50)
@@ -196,7 +260,7 @@ def main():
                     ball.dy *= -1
                     sounds.play_hit_block()
                     server.send_vibration('medium')
-                    server.send_update(score, lives, state)
+                    server.send_update(score, lives, state, sounds.muted)
                     break
 
             if len(blocks) == 0:
@@ -215,7 +279,7 @@ def main():
                 lives -= 1
                 #server.send_update(score, lives, state)
                 if lives > 0:
-                    server.send_update(score, lives, state)
+                    server.send_update(score, lives, state, sounds.muted)
                     sounds.play_lose_life()
                     server.send_vibration('heavy')
                     paddle.__init__()
@@ -223,7 +287,7 @@ def main():
                 else:
                     state = "INPUT_NAME"
                     player_name = ""
-                    server.send_update(score, lives, state)
+                    server.send_update(score, lives, state, sounds.muted)
                     sounds.play_game_over()
                     server.send_vibration('heavy')
                     #add_score(player_name, score)
